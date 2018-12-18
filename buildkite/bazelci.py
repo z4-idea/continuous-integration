@@ -368,14 +368,14 @@ def bazelcipy_url():
     """
     URL to the latest version of this script.
     """
-    return "https://raw.githubusercontent.com/bazelbuild/continuous-integration/master/buildkite/bazelci.py?{}".format(int(time.time()))
+    return "https://raw.githubusercontent.com/bazelbuild/continuous-integration/remote-cache-win/buildkite/bazelci.py?{}".format(int(time.time()))
 
 
 def incompatible_flag_verbose_failures_url():
     """
     URL to the latest version of this script.
     """
-    return "https://raw.githubusercontent.com/bazelbuild/continuous-integration/master/buildkite/incompatible_flag_verbose_failures.py?{}".format(int(time.time()))
+    return "https://raw.githubusercontent.com/bazelbuild/continuous-integration/remote-cache-win/buildkite/incompatible_flag_verbose_failures.py?{}".format(int(time.time()))
 
 
 def downstream_projects_root(platform):
