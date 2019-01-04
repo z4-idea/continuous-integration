@@ -237,6 +237,7 @@ PLATFORMS = {
         "agent-directory": "/var/lib/buildkite-agent/builds/${BUILDKITE_AGENT_NAME}",
         "publish_binary": True,
         "java": "8",
+        "docker-image": "gcr.io/bazel-public/ubuntu1404:java8",
     },
     "ubuntu1604": {
         "name": "Ubuntu 16.04, JDK 8",
@@ -244,6 +245,7 @@ PLATFORMS = {
         "agent-directory": "/var/lib/buildkite-agent/builds/${BUILDKITE_AGENT_NAME}",
         "publish_binary": False,
         "java": "8",
+        "docker-image": "gcr.io/bazel-public/ubuntu1604:java8",
     },
     "ubuntu1804": {
         "name": "Ubuntu 18.04, JDK 8",
@@ -251,6 +253,7 @@ PLATFORMS = {
         "agent-directory": "/var/lib/buildkite-agent/builds/${BUILDKITE_AGENT_NAME}",
         "publish_binary": False,
         "java": "8",
+        "docker-image": "gcr.io/bazel-public/ubuntu1804:java8",
     },
     "ubuntu1804_nojava": {
         "name": "Ubuntu 18.04, no JDK",
@@ -258,6 +261,7 @@ PLATFORMS = {
         "agent-directory": "/var/lib/buildkite-agent/builds/${BUILDKITE_AGENT_NAME}",
         "publish_binary": False,
         "java": "no",
+        "docker-image": "gcr.io/bazel-public/ubuntu1804:nojava",
     },
     "ubuntu1804_java9": {
         "name": "Ubuntu 18.04, JDK 9",
@@ -265,6 +269,7 @@ PLATFORMS = {
         "agent-directory": "/var/lib/buildkite-agent/builds/${BUILDKITE_AGENT_NAME}",
         "publish_binary": False,
         "java": "9",
+        "docker-image": "gcr.io/bazel-public/ubuntu1804:java9",
     },
     "ubuntu1804_java10": {
         "name": "Ubuntu 18.04, JDK 10",
@@ -272,6 +277,7 @@ PLATFORMS = {
         "agent-directory": "/var/lib/buildkite-agent/builds/${BUILDKITE_AGENT_NAME}",
         "publish_binary": False,
         "java": "10",
+        "docker-image": "gcr.io/bazel-public/ubuntu1804:java10",
     },
     "macos": {
         "name": "macOS, JDK 8",
@@ -294,6 +300,7 @@ PLATFORMS = {
         "publish_binary": False,
         "host-platform": "ubuntu1604",
         "java": "8",
+        "docker-image": "gcr.io/bazel-public/ubuntu1604:java8",
     },
 }
 
@@ -353,7 +360,7 @@ def bazelcipy_url():
     """
     URL to the latest version of this script.
     """
-    return "https://raw.githubusercontent.com/bazelbuild/continuous-integration/master/buildkite/bazelci.py?{}".format(
+    return "https://raw.githubusercontent.com/bazelbuild/continuous-integration/docker/buildkite/bazelci.py?{}".format(
         int(time.time())
     )
 
@@ -1175,15 +1182,30 @@ def runner_step(
     for flag in incompatible_flags or []:
         command += " --incompatible_flag=" + flag
     label = create_label(platform, project_name)
-    return {
-        "label": label,
-        "command": [fetch_bazelcipy_command(), command],
-        "agents": {
-            "kind": "worker",
-            "java": PLATFORMS[platform]["java"],
-            "os": rchop(host_platform, "_nojava", "_java8", "_java9", "_java10"),
-        },
-    }
+    if "docker-image" in PLATFORMS[platform]:
+        return {
+            "label": label,
+            "command": [fetch_bazelcipy_command(), command],
+            "agents": {"kind": "docker", "os": "linux"},
+            "plugins": {
+                "philwo/docker": {
+                    "image": PLATFORMS[platform]["docker-image"],
+                    "debug": True,
+                    "privileged": True,
+                    "tmpfs": ["/root/.cache:exec"],
+                }
+            },
+        }
+    else:
+        return {
+            "label": label,
+            "command": [fetch_bazelcipy_command(), command],
+            "agents": {
+                "kind": "worker",
+                "java": PLATFORMS[platform]["java"],
+                "os": rchop(host_platform, "_nojava", "_java8", "_java9", "_java10"),
+            },
+        }
 
 
 def fetch_bazelcipy_command():
