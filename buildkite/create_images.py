@@ -43,6 +43,8 @@ IMAGE_CREATION_VMS = {
     #     ]
     # },
     ("bk-docker",): {
+        "machine_type": "n1-standard-16",
+        "boot_disk_size": "250GB",
         "source_image_project": "ubuntu-os-cloud",
         "source_image_family": "ubuntu-1804-lts",
         "setup_script": "setup-docker.sh",

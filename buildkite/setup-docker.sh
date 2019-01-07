@@ -50,7 +50,7 @@ EOF
   # Write the Buildkite agent configuration.
   cat > /etc/buildkite-agent/buildkite-agent.cfg <<EOF
 token="xxx"
-name="%hostname-%n"
+name="%hostname"
 tags="kind=docker,os=linux"
 build-path="/var/lib/buildkite-agent/builds"
 hooks-path="/etc/buildkite-agent/hooks"
@@ -66,7 +66,7 @@ EOF
 
 set -euo pipefail
 
-export PATH=$PATH:/usr/lib/google-cloud-sdk/bin:/snap/bin:/snap/google-cloud-sdk/current/bin
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:/snap/google-cloud-sdk/current/bin
 export BUILDKITE_ARTIFACT_UPLOAD_DESTINATION="gs://bazel-buildkite-artifacts/$BUILDKITE_JOB_ID"
 export BUILDKITE_GS_ACL="publicRead"
 
@@ -78,7 +78,6 @@ EOF
   mkdir /etc/systemd/system/buildkite-agent.service.d
   cat > /etc/systemd/system/buildkite-agent.service.d/override.conf <<'EOF'
 [Service]
-Restart=always
 PermissionsStartOnly=true
 # Immediately force a shutdown of the system when the Buildkite agent terminates.
 ExecStopPost=/sbin/poweroff --force --force
@@ -108,8 +107,18 @@ EOF
 }
 EOF
 
-  # Disable the Docker service, as the startup script has to mount
+  # Pull some known images so that we don't have to download / extract them on each CI job.
+  export PATH=$PATH:/usr/lib/google-cloud-sdk/bin:/snap/bin:/snap/google-cloud-sdk/current/bin
+  gcloud auth configure-docker --quiet
+  docker pull gcr.io/bazel-public/ubuntu1404:java8
+  docker pull gcr.io/bazel-public/ubuntu1604:java8
+  for java in java8 java9 java10 nojava; do
+    docker pull gcr.io/bazel-public/ubuntu1804:$java
+  done
+
+  # Disable the Docker service and related stuff, as the startup script has to mount
   # /var/lib/docker first.
+  systemctl disable containerd
   systemctl disable docker
 }
 

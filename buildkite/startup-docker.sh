@@ -22,15 +22,16 @@ snap wait system seed.loaded
 # Ubuntu 18.04 installs gcloud, gsutil, etc. commands in /snap/bin
 export PATH=$PATH:/snap/bin
 
-# If available: Use the local SSD as swap space.
+# If available: Use the local SSD as fast storage.
 if [[ -e /dev/nvme0n1 ]]; then
-  mkswap -f /dev/nvme0n1
-  swapon /dev/nvme0n1
+  mkfs.xfs -f -m rmapbt=1 -m reflink=1 /dev/nvme0n1
+  mount /dev/nvme0n1 /mnt
 
-  # Move fast and lose data.
-  mount -t tmpfs -o mode=1777,uid=root,gid=root,size=$((100 * 1024 * 1024 * 1024)) tmpfs /tmp
-  mount -t tmpfs -o mode=0711,uid=root,gid=root,size=$((100 * 1024 * 1024 * 1024)) tmpfs /var/lib/docker
-  mount -t tmpfs -o mode=0755,uid=buildkite-agent,gid=buildkite-agent,size=$((100 * 1024 * 1024 * 1024)) tmpfs /var/lib/buildkite-agent
+  # Move over our working directories to the SSD and then mount them back into the original path.
+  for dir in bazelbuild buildkite-agent docker; do
+    rsync -aHAX "/var/lib/${dir}/" "/mnt/${dir}/"
+    mount --bind "/mnt/${dir}" "/var/lib/${dir}"
+  done
 fi
 
 # Start Docker.
@@ -42,7 +43,6 @@ BUILDKITE_TOKEN=$(gsutil cat "gs://bazel-encrypted-secrets/buildkite-agent-token
 
 # Insert the Buildkite Token into the agent configuration.
 sed -i "s/token=\"xxx\"/token=\"${BUILDKITE_TOKEN}\"/" /etc/buildkite-agent/buildkite-agent.cfg
-sed -i "s/name=.*/name=%hostname/" /etc/buildkite-agent/buildkite-agent.cfg
 
 # Fix permissions of the Buildkite agent configuration files and hooks.
 chmod 0400 /etc/buildkite-agent/buildkite-agent.cfg
