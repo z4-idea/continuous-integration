@@ -25,7 +25,7 @@ instance_groups:
   - name: bk-docker
     count: 2
     image_family: bk-docker
-    machine_type: n1-standard-96
+    machine_type: n1-highmem-96
     local_ssd_0: interface=nvme
     local_ssd_1: interface=nvme
     local_ssd_2: interface=nvme

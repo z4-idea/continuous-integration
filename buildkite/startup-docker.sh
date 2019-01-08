@@ -30,33 +30,32 @@ export DEBIAN_FRONTEND="noninteractive"
 export PATH=$PATH:/snap/bin:/snap/google-cloud-sdk/current/bin
 
 # Use the local SSDs as fast storage for Docker and the Buildkite agent.
-if zpool status bazel 2>&1 | grep "no such pool" >/dev/null; then
-  zpool create -f \
-      -o ashift=12 \
-      -O canmount=off \
-      -O compression=lz4 \
-      -O normalization=formD \
-      -O relatime=on \
-      -O sync=disabled \
-      -O xattr=sa \
-      bazel /dev/nvme0n?
+zpool destroy -f bazel || true
+zpool create -f \
+    -o ashift=12 \
+    -O canmount=off \
+    -O compression=lz4 \
+    -O normalization=formD \
+    -O relatime=on \
+    -O sync=disabled \
+    -O xattr=sa \
+    bazel /dev/nvme0n?
 
-  rm -rf /var/lib/bazelbuild
-  zfs create -o mountpoint=/var/lib/bazelbuild bazel/bazelbuild
-  curl https://storage.googleapis.com/bazel-git-mirror/bazelbuild.tar | tar x -C /var/lib
-  chown -R root:root /var/lib/bazelbuild
-  chmod -R 0755 /var/lib/bazelbuild
+rm -rf /var/lib/bazelbuild
+zfs create -o mountpoint=/var/lib/bazelbuild bazel/bazelbuild
+curl https://storage.googleapis.com/bazel-git-mirror/bazelbuild.tar | tar x -C /var/lib
+chown -R root:root /var/lib/bazelbuild
+chmod -R 0755 /var/lib/bazelbuild
 
-  rm -rf /var/lib/buildkite-agent
-  zfs create -o mountpoint=/var/lib/buildkite-agent bazel/buildkite-agent
-  chown buildkite-agent:buildkite-agent /var/lib/docker
-  chown 0755 /var/lib/docker
+rm -rf /var/lib/buildkite-agent
+zfs create -o mountpoint=/var/lib/buildkite-agent bazel/buildkite-agent
+chown buildkite-agent:buildkite-agent /var/lib/buildkite-agent
+chmod 0755 /var/lib/buildkite-agent
 
-  rm -rf /var/lib/docker
-  zfs create -o mountpoint=/var/lib/docker bazel/docker
-  chown root:root /var/lib/docker
-  chown 0711 /var/lib/docker
-fi
+rm -rf /var/lib/docker
+zfs create -o mountpoint=/var/lib/docker bazel/docker
+chown root:root /var/lib/docker
+chmod 0711 /var/lib/docker
 
 # Configure and start Docker.
 cat > /etc/docker/daemon.json <<'EOF'
@@ -96,7 +95,7 @@ cat > /etc/buildkite-agent/hooks/environment <<'EOF'
 
 set -euo pipefail
 
-export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:/snap/google-cloud-sdk/current/bin
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:/snap/google-cloud-sdk/current/bin"
 export BUILDKITE_ARTIFACT_UPLOAD_DESTINATION="gs://bazel-buildkite-artifacts/$BUILDKITE_JOB_ID"
 export BUILDKITE_GS_ACL="publicRead"
 
@@ -107,6 +106,13 @@ EOF
 chmod 0400 /etc/buildkite-agent/buildkite-agent.cfg
 chmod 0500 /etc/buildkite-agent/hooks/*
 chown -R buildkite-agent:buildkite-agent /etc/buildkite-agent
+
+# Optimize the CPU scheduler for throughput.
+# (see https://unix.stackexchange.com/questions/466722/how-to-change-the-length-of-time-slices-used-by-the-linux-cpu-scheduler/466723)
+sysctl -w kernel.sched_min_granularity_ns=10000000
+sysctl -w kernel.sched_wakeup_granularity_ns=15000000
+sysctl -w vm.dirty_ratio=40
+echo always > /sys/kernel/mm/transparent_hugepage/enabled
 
 # Start the Buildkite agent service.
 for i in 3 2 1; do

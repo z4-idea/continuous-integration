@@ -596,42 +596,42 @@ def fetch_saucelabs_token():
 
 def fetch_buildkite_token():
     """This function is used in buildkite/incompatible_flag_verbose_failures.py"""
-    global __buildkite_token__	
-    if __buildkite_token__:	
-        return __buildkite_token__	
-    try:	
-        execute_command(	
-            [	
-                gsutil_command(),	
-                "cp",	
-                "gs://bazel-encrypted-secrets/buildkite-api-token.enc",	
-                "buildkite-api-token.enc",	
-            ]	
-        )	
-        __buildkite_token__ = (	
-            subprocess.check_output(	
-                [	
-                    gcloud_command(),	
-                    "kms",	
-                    "decrypt",	
-                    "--location",	
-                    "global",	
-                    "--keyring",	
-                    "buildkite",	
-                    "--key",	
-                    "buildkite-api-token",	
-                    "--ciphertext-file",	
-                    "buildkite-api-token.enc",	
-                    "--plaintext-file",	
-                    "-",	
-                ],	
-                env=os.environ,	
-            )	
-            .decode("utf-8")	
-            .strip()	
-        )	
-        return __buildkite_token__	
-    finally:	
+    global __buildkite_token__
+    if __buildkite_token__:
+        return __buildkite_token__
+    try:
+        execute_command(
+            [
+                gsutil_command(),
+                "cp",
+                "gs://bazel-encrypted-secrets/buildkite-api-token.enc",
+                "buildkite-api-token.enc",
+            ]
+        )
+        __buildkite_token__ = (
+            subprocess.check_output(
+                [
+                    gcloud_command(),
+                    "kms",
+                    "decrypt",
+                    "--location",
+                    "global",
+                    "--keyring",
+                    "buildkite",
+                    "--key",
+                    "buildkite-api-token",
+                    "--ciphertext-file",
+                    "buildkite-api-token.enc",
+                    "--plaintext-file",
+                    "-",
+                ],
+                env=os.environ,
+            )
+            .decode("utf-8")
+            .strip()
+        )
+        return __buildkite_token__
+    finally:
         os.remove("buildkite-api-token.enc")
 
 
@@ -1192,7 +1192,7 @@ def runner_step(
                     "image": PLATFORMS[platform]["docker-image"],
                     "debug": True,
                     "privileged": True,
-                    "tmpfs": ["/root/.cache:exec"],
+                    "tmpfs": ["/home/bazel/.cache:exec"],
                 }
             },
         }
