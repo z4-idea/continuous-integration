@@ -24,7 +24,7 @@ export PATH=$PATH:/snap/bin
 
 # If available: Use the local SSD as fast storage.
 if [[ -e /dev/nvme0n1 ]]; then
-  mkfs.xfs -f -m rmapbt=1 -m reflink=1 /dev/nvme0n1
+  mkfs.xfs -f /dev/nvme0n1
   mount /dev/nvme0n1 /mnt
 
   # Move over our working directories to the SSD and then mount them back into the original path.
