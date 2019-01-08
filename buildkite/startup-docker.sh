@@ -14,35 +14,94 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Fail on errors.
+# Fail when using undefined variables.
+# Print all executed commands.
+# Fail when any command in a pipe fails.
 set -euxo pipefail
 
 # Wait for all snaps to become available.
 snap wait system seed.loaded
 
+# Prevent dpkg / apt-get / debconf from trying to access stdin.
+export DEBIAN_FRONTEND="noninteractive"
+
 # Ubuntu 18.04 installs gcloud, gsutil, etc. commands in /snap/bin
-export PATH=$PATH:/snap/bin
+export PATH=$PATH:/snap/bin:/snap/google-cloud-sdk/current/bin
 
-# If available: Use the local SSD as fast storage.
-if [[ -e /dev/nvme0n1 ]]; then
-  mkfs.xfs -f /dev/nvme0n1
-  mount /dev/nvme0n1 /mnt
+# Use the local SSDs as fast storage for Docker and the Buildkite agent.
+if zpool status bazel 2>&1 | grep "no such pool" >/dev/null; then
+  zpool create -f \
+      -o ashift=12 \
+      -O canmount=off \
+      -O compression=lz4 \
+      -O normalization=formD \
+      -O relatime=on \
+      -O sync=disabled \
+      -O xattr=sa \
+      bazel /dev/nvme0n?
 
-  # Move over our working directories to the SSD and then mount them back into the original path.
-  for dir in bazelbuild buildkite-agent docker; do
-    rsync -aHAX "/var/lib/${dir}/" "/mnt/${dir}/"
-    mount --bind "/mnt/${dir}" "/var/lib/${dir}"
-  done
+  rm -rf /var/lib/bazelbuild
+  zfs create -o mountpoint=/var/lib/bazelbuild bazel/bazelbuild
+  curl https://storage.googleapis.com/bazel-git-mirror/bazelbuild.tar | tar x -C /var/lib
+  chown -R root:root /var/lib/bazelbuild
+  chmod -R 0755 /var/lib/bazelbuild
+
+  rm -rf /var/lib/buildkite-agent
+  zfs create -o mountpoint=/var/lib/buildkite-agent bazel/buildkite-agent
+  chown buildkite-agent:buildkite-agent /var/lib/docker
+  chown 0755 /var/lib/docker
+
+  rm -rf /var/lib/docker
+  zfs create -o mountpoint=/var/lib/docker bazel/docker
+  chown root:root /var/lib/docker
+  chown 0711 /var/lib/docker
 fi
 
-# Start Docker.
+# Configure and start Docker.
+cat > /etc/docker/daemon.json <<'EOF'
+{
+  "insecure-registries" : ["docker-cache.europe-west1-c.c.bazel-public.internal:5000"],
+  "storage-driver": "zfs"
+}
+EOF
 systemctl start docker
+
+# Pull some known images so that we don't have to download / extract them on each CI job.
+gcloud auth configure-docker --quiet
+docker pull gcr.io/bazel-public/ubuntu1404:java8
+docker pull gcr.io/bazel-public/ubuntu1604:java8
+for java in java8 java9 java10 nojava; do
+  docker pull gcr.io/bazel-public/ubuntu1804:$java
+done
 
 # Get the Buildkite Token from GCS and decrypt it using KMS.
 BUILDKITE_TOKEN=$(gsutil cat "gs://bazel-encrypted-secrets/buildkite-agent-token.enc" | \
   gcloud kms decrypt --location global --keyring buildkite --key buildkite-agent-token --ciphertext-file - --plaintext-file -)
 
-# Insert the Buildkite Token into the agent configuration.
-sed -i "s/token=\"xxx\"/token=\"${BUILDKITE_TOKEN}\"/" /etc/buildkite-agent/buildkite-agent.cfg
+# Write the Buildkite agent configuration.
+cat > /etc/buildkite-agent/buildkite-agent.cfg <<EOF
+token="${BUILDKITE_TOKEN}"
+name="%hostname"
+tags="kind=docker,os=linux"
+build-path="/var/lib/buildkite-agent/builds"
+hooks-path="/etc/buildkite-agent/hooks"
+plugins-path="/etc/buildkite-agent/plugins"
+git-clone-flags="-v --reference /var/lib/bazelbuild"
+EOF
+
+# Add the Buildkite agent hooks.
+cat > /etc/buildkite-agent/hooks/environment <<'EOF'
+#!/bin/bash
+
+set -euo pipefail
+
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin:/snap/google-cloud-sdk/current/bin
+export BUILDKITE_ARTIFACT_UPLOAD_DESTINATION="gs://bazel-buildkite-artifacts/$BUILDKITE_JOB_ID"
+export BUILDKITE_GS_ACL="publicRead"
+
+gcloud auth configure-docker --quiet
+EOF
 
 # Fix permissions of the Buildkite agent configuration files and hooks.
 chmod 0400 /etc/buildkite-agent/buildkite-agent.cfg
@@ -50,6 +109,8 @@ chmod 0500 /etc/buildkite-agent/hooks/*
 chown -R buildkite-agent:buildkite-agent /etc/buildkite-agent
 
 # Start the Buildkite agent service.
-systemctl start buildkite-agent
+for i in 3 2 1; do
+  systemctl start buildkite-agent@$i
+done
 
 exit 0

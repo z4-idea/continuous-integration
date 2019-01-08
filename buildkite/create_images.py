@@ -133,12 +133,12 @@ def create_instance(instance_name, params):
         gcloud.create_instance(
             instance_name,
             zone=LOCATION,
-            machine_type="n1-standard-32",
+            machine_type="n1-standard-8",
             network="buildkite",
             metadata_from_file=startup_script,
             min_cpu_platform="Intel Skylake",
             boot_disk_type="pd-ssd",
-            boot_disk_size="250GB",
+            boot_disk_size="50GB",
             **image,
         )
     finally:
