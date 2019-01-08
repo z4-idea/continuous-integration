@@ -12,7 +12,7 @@
 #
 ---
 default_vm:
-  boot_disk_size: 50GB
+  boot_disk_size: 250GB
   boot_disk_type: pd-ssd
   image_project: bazel-public
   machine_type: n1-standard-32

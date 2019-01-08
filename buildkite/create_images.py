@@ -43,8 +43,6 @@ IMAGE_CREATION_VMS = {
     #     ]
     # },
     ("bk-docker",): {
-        "machine_type": "n1-standard-16",
-        "boot_disk_size": "250GB",
         "source_image_project": "ubuntu-os-cloud",
         "source_image_family": "ubuntu-1804-lts",
         "setup_script": "setup-docker.sh",
@@ -115,7 +113,7 @@ def preprocess_setup_script(setup_script, is_windows):
     return output_file
 
 
-def create_instance(instance_name, params, git_commit):
+def create_instance(instance_name, params):
     is_windows = "windows" in instance_name
     setup_script = preprocess_setup_script(params["setup_script"], is_windows)
     try:
@@ -135,13 +133,12 @@ def create_instance(instance_name, params, git_commit):
         gcloud.create_instance(
             instance_name,
             zone=LOCATION,
-            machine_type="n1-standard-8",
+            machine_type="n1-standard-32",
             network="buildkite",
-            metadata="image-version={}".format(git_commit),
             metadata_from_file=startup_script,
             min_cpu_platform="Intel Skylake",
             boot_disk_type="pd-ssd",
-            boot_disk_size="50GB",
+            boot_disk_size="250GB",
             **image,
         )
     finally:
@@ -182,11 +179,11 @@ def print_windows_instructions(instance_name):
     return tail_start
 
 
-def workflow(name, params, git_commit):
+def workflow(name, params):
     instance_name = "%s-image-%s" % (name, int(datetime.now().timestamp()))
     try:
         # Create the VM.
-        create_instance(instance_name, params, git_commit)
+        create_instance(instance_name, params)
 
         # Wait for the VM to become ready.
         gcloud_utils.wait_for_instance(instance_name, zone=LOCATION, status="RUNNING")
@@ -238,18 +235,6 @@ def main(argv=None):
         )
         return 1
 
-    try:
-        git_commit = subprocess.check_output(
-            ["git", "rev-parse", "--verify", "HEAD"], universal_newlines=True
-        ).strip()
-    except subprocess.CalledProcessError:
-        print(
-            "Could not get current Git commit hash. You have to run create_images.py "
-            "from a Git repository.",
-            file=sys.stderr,
-        )
-        return 1
-
     if subprocess.check_output(["git", "status", "--porcelain"], universal_newlines=True).strip():
         print(
             "There are pending changes in your Git repository. You have to commit "
@@ -263,7 +248,7 @@ def main(argv=None):
         for name in names:
             if argv and name not in argv:
                 continue
-            WORK_QUEUE.put({"name": name, "params": params, "git_commit": git_commit})
+            WORK_QUEUE.put({"name": name, "params": params})
 
     # Spawn worker threads that will create the VMs.
     threads = []
