@@ -23,12 +23,10 @@ default_vm:
   zone: europe-west1-c
 instance_groups:
   - name: bk-docker
-    count: 2
+    count: 6
     image_family: bk-docker
-    machine_type: n1-highmem-96
-    local_ssd_0: interface=nvme
-    local_ssd_1: interface=nvme
-    local_ssd_2: interface=nvme
+    machine_type: n1-standard-32
+    local_ssd: interface=nvme
     metadata_from_file: startup-script=startup-docker.sh
   - name: bk-pipeline-ubuntu1804-java8
     count: 1

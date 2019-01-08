@@ -1192,6 +1192,7 @@ def runner_step(
                     "image": PLATFORMS[platform]["docker-image"],
                     "debug": True,
                     "privileged": True,
+                    "propagate-environment": True,
                     "tmpfs": ["/home/bazel/.cache:exec"],
                 }
             },

@@ -29,6 +29,13 @@ export DEBIAN_FRONTEND="noninteractive"
 # Ubuntu 18.04 installs gcloud, gsutil, etc. commands in /snap/bin
 export PATH=$PATH:/snap/bin:/snap/google-cloud-sdk/current/bin
 
+# Optimize the CPU scheduler for throughput.
+# (see https://unix.stackexchange.com/questions/466722/how-to-change-the-length-of-time-slices-used-by-the-linux-cpu-scheduler/466723)
+sysctl -w kernel.sched_min_granularity_ns=10000000
+sysctl -w kernel.sched_wakeup_granularity_ns=15000000
+sysctl -w vm.dirty_ratio=40
+#echo always > /sys/kernel/mm/transparent_hugepage/enabled
+
 # Use the local SSDs as fast storage for Docker and the Buildkite agent.
 zpool destroy -f bazel || true
 zpool create -f \
@@ -68,11 +75,12 @@ systemctl start docker
 
 # Pull some known images so that we don't have to download / extract them on each CI job.
 gcloud auth configure-docker --quiet
-docker pull gcr.io/bazel-public/ubuntu1404:java8
-docker pull gcr.io/bazel-public/ubuntu1604:java8
+docker pull gcr.io/bazel-public/ubuntu1404:java8 &
+docker pull gcr.io/bazel-public/ubuntu1604:java8 &
 for java in java8 java9 java10 nojava; do
-  docker pull gcr.io/bazel-public/ubuntu1804:$java
+  docker pull gcr.io/bazel-public/ubuntu1804:$java &
 done
+wait
 
 # Get the Buildkite Token from GCS and decrypt it using KMS.
 BUILDKITE_TOKEN=$(gsutil cat "gs://bazel-encrypted-secrets/buildkite-agent-token.enc" | \
@@ -107,16 +115,7 @@ chmod 0400 /etc/buildkite-agent/buildkite-agent.cfg
 chmod 0500 /etc/buildkite-agent/hooks/*
 chown -R buildkite-agent:buildkite-agent /etc/buildkite-agent
 
-# Optimize the CPU scheduler for throughput.
-# (see https://unix.stackexchange.com/questions/466722/how-to-change-the-length-of-time-slices-used-by-the-linux-cpu-scheduler/466723)
-sysctl -w kernel.sched_min_granularity_ns=10000000
-sysctl -w kernel.sched_wakeup_granularity_ns=15000000
-sysctl -w vm.dirty_ratio=40
-echo always > /sys/kernel/mm/transparent_hugepage/enabled
-
 # Start the Buildkite agent service.
-for i in 3 2 1; do
-  systemctl start buildkite-agent@$i
-done
+systemctl start buildkite-agent
 
 exit 0
